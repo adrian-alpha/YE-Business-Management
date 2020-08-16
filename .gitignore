@@ -1,0 +1,12 @@
+# pycharm settings file
+.idea 
+
+# personal config file
+config.ini.bak
+config.bak.ini
+
+# PyInstaller files
+*.spec
+build/
+dist/
+__pycache__/
