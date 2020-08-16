@@ -1,0 +1,8 @@
+paypalrestsdk
+ebaysdk
+bs4
+mysql-connector-python
+matplotlib
+plotly
+xlwt
+numpy
