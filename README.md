@@ -70,6 +70,7 @@ If you want to compile the python code yourself, use `pyinstaller`. For referenc
      6. plotly
      7. xlwt
      8. numpy
+     9. pygame
 2. **Ensure tkinter is installed**
 3. Import the dbScheme.sql schema into MySQL
 4. Alter the config.ini file's host, user and password values under the mysql header to your details

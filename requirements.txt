@@ -6,3 +6,4 @@ matplotlib
 plotly
 xlwt
 numpy
+pygame
