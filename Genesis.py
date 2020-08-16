@@ -1,3 +1,11 @@
+"""
+Codename Genesis - 5674/87394.050-9
+
+GENESIS BM
+
+©2017-2019 Cortex™ - a direct subsidiary of Vortex Enterprise International™ - all rights reserved.
+"""
+
 try:
     import tkinter as tk
     from tkinter import ttk, messagebox, filedialog, scrolledtext, simpledialog
@@ -6,7 +14,7 @@ except ImportError:
     from Tkinter import ttk, messagebox, filedialog, scrolledtext, simpledialog
 
 paypal_mode = 'paypal_live'
-version = '1.00'
+version = '5.67'
 website = "http://vortexenterpriseco.wixsite.com/vortex"
 
 #user access levels:
