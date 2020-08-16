@@ -1,4 +1,4 @@
-"""
+﻿"""
 Codename Genesis - 5674/87394.050-9
 
 GENESIS BM
@@ -16,6 +16,7 @@ except ImportError:
 paypal_mode = 'paypal_live'
 version = '5.67'
 website = "http://vortexenterpriseco.wixsite.com/vortex"
+#website = "https://thevortex.xyz"
 
 #user access levels:
 # 1 = teacher/supervisor
@@ -26,18 +27,24 @@ website = "http://vortexenterpriseco.wixsite.com/vortex"
 # 4 and 5 are just status', they do not differ in restrictions
 
 class Main:
-    def __init__(self, parent):
+    def __init__(self, parent, logParent):
         #parent is the root window - Tk()
         self._top = parent
-        parent.title("Starting Up...")
+        self._logparent = logParent
+        parent.title("Vortex: Unleash the Potential")
         #following lines catch if user tries to close the window
         parent.protocol('WM_DELETE_WINDOW', self.file_exit)
+        logParent.protocol("WM_DELETE_WINDOW", self.shortcut_debug_showConsole)
+        logParent.title("Vortex: Debug Log")
         #the icon for the root window: .xbm for linux; .ico for windows
         try:
-            parent.wm_iconbitmap("Images/young enterprise 1.ico")
+            parent.wm_iconbitmap("Images/eye of horus.ico")
+            logParent.wm_iconbitmap("Images/eye of horus.ico")
         except:
-            parent.wm_iconbitmap("@Images/young enterprise 1.xbm")
+            parent.wm_iconbitmap("@Images/eye of horus.xbm")
+            logParent.wm_iconbitmap("@Images/eye of horus.xbm")
         parent.geometry("800x600")
+        logParent.geometry("700x400")
         self.showDebug = tk.StringVar()
 
         #accelerators are the shortcuts
@@ -53,6 +60,11 @@ class Main:
         self.lastCol = [None, 1]
         #used to generate pseudo random unique IDs
         self.IDCounter = 1
+
+        #for music
+        self.pauseStatus = tk.StringVar()
+        self.pauseStatus.set('0')
+        self.music = self.findMusic()
 
         #initialising certain variables for a user currently not logged in
         self.registrationProgress = False
@@ -76,16 +88,25 @@ class Main:
                                               '~', '^', '+', '?', '#',
                                               'l', 's']])
                            )
+
+        #intro music
+        mixer.init(channels=2)
+        self.playMusic('Music/System/Intro.ogg', fadeout=False)
         self.frames = {}
         self.currentFrame = ""
+
+        #this adds the Log frame (which has a different toplevel window to the rest of the frames) to the self.frames
+        #  dictionary so functions of the Log class can be called when actions are called in the other frames
+        self.frames['Log'] = Log(logParent, self)
         #this initialises all the frames needed before logging in. It instantiates these classes and creates the
         # frames
-        self._pendingF = [[Load, '#ffffff'], [Login, '#ffffff'], [Create, '#ffffff']]
+        self._pendingF = [[Load, '#ffffff'], [Login, '#ffffff'], [Create, '#ffffff'], [ContactForm, '#ffffff']]
         for F in self._pendingF:
             self.instantiateFrame(F)
 
         #loads the loading frame which introduces the program and starts the 'cinematic' entrance
-        self.changePage("Load", 'Starting Up...')
+        self.changePage("Load", 'Per Audacia Ad Astra')
+        self.frames['Load'].entrance()
 
         #calls the method 'configure' from the module paypalrestsdk and configures it with the client secret and ID
         paypal.configure(self.parse_file(filename='config.ini', section=paypal_mode))
@@ -161,6 +182,15 @@ class Main:
             #if it is a child, it is just raised to the front
             self.frames[new].tkraise()
 
+    def pause(self, frame, duration, skip=False):
+        #causes the program to temporarily hold for a chosen duration.
+        #The skip function is primarily used in the Load frame to quickly break out of the function call and speed up
+        #  the loading process
+        if skip:
+            return
+        frame.update()
+        sleep(duration)
+
     def parse_file(self, filename, section):
         #function that gets the specific configuration details for different elements of the program from the
         # config.ini file
@@ -203,7 +233,7 @@ class Main:
     def load_company(self, companyDB, personalData, IDheaders, loginData, LoginHeaders):
         #called after login to to setup the program for that user
 
-        #sets the database so that program can load details for the user's  company
+        #sets the database so that program can load details for the user's company
         self.setCompanyDatabase(companyDB)
         self.login_status = True
         #destroys all the pre-login frames as they are not needed anymore
@@ -256,6 +286,7 @@ class Main:
             self.metadata = {}
             for a, b in zip(self.headers, self.c.fetchone()):
                 self.metadata[a[0]] = b
+            self.log_event(self.metadata, self.lineno())
 
         except Error as e:
             #adds error with mysql  to debug log
@@ -280,9 +311,10 @@ class Main:
         root.bind('<Control-h>', lambda event: webb.open(website))
         root.bind('<Control-a>', lambda e: self.aboutInfo())
         root.bind('<Control-q>', lambda e: self.file_exit())
+        root.bind('<Control-d>', lambda e: self.shortcut_debug_showConsole())
 
     def build_menu(self, root, title, UsrLevel):
-        # creates the menu bar used to move between frames/pages
+        # creates the menu bar used to move between frames
         self.menubar = tk.Menu(root)
 
         self.filemenu = tk.Menu(self.menubar, tearoff=0)
@@ -332,8 +364,41 @@ class Main:
                                                                                                         "Data"))
         self.menubar.add_cascade(label="Inventory", menu=self.inventorymenu)
 
-        #adds the menubar created in the function to the Tk() instance - root
+        self.musicmenu = tk.Menu(self.menubar, tearoff=0)
+        self.musicmenu.add_checkbutton(label="Pause", command=self.pauseMusic,
+                                       variable=self.pauseStatus)
+        # creates a new menu item for each track in the /Music folder
+        for track in self.music:
+            self.musicmenu.add_command(label=track, command=lambda t=track: self.playMusic('Music/' + t))
+        self.menubar.add_cascade(label="Music", menu=self.musicmenu)
+
+        self.debugmenu = tk.Menu(self.menubar, tearoff=0)
+
+        self.debugmenu.add_checkbutton(label="Show Console", command=self.debug_showConsole,
+                                       variable=self.showDebug)
+        self.debugmenu.add_command(label="Clear Console", command=self.frames['Log'].clear_log)
+        self.debugmenu.add_separator()
+        self.debugmenu.add_command(label="Save log", command=self.frames['Log'].save_file)
+        self.debugmenu.add_command(label="Open log", command=self.frames['Log'].open_file)
+        self.menubar.add_cascade(label="Debug", menu=self.debugmenu)
         root.config(menu=self.menubar)
+
+    # menubar commands
+
+    def shortcut_debug_showConsole(self):
+        # used to change the state of the checkbutton if an alternative shortcut is used to open the debug menu
+        if self.showDebug.get() == "1":
+            self.showDebug.set("0")
+        else:
+            self.showDebug.set("1")
+        self.debug_showConsole()
+
+    def debug_showConsole(self):
+        # shows/hides the toplevel debug window
+        if self.showDebug.get() == '1':
+            self._logparent.deiconify()
+        else:
+            self._logparent.withdraw()
 
     def file_exit(self):
         #function to confirm quitting the program
@@ -354,6 +419,31 @@ class Main:
                     self.conn.close()
 
             self._top.quit()
+
+    def playMusic(self, name, fadeout=True):
+        #plays music if the music hasn't been paused
+        if self.pauseStatus.get() == '0':
+            if fadeout:
+                mixer.music.fadeout(1000)
+            mixer.music.load(name)
+            mixer.music.play(-1)
+
+    def pauseMusic(self):
+        # pauses the music
+        if self.pauseStatus.get() == '1':
+            mixer.music.pause()
+        else:
+            mixer.music.unpause()
+
+    def findMusic(self):
+        # finds all music in the directory /Music/ with a .mp3 or .ogg file extension
+        # there are a few compatibility probelms with .mp3 files and the pygame mixer.music module: it can play mp3s,
+        #  but not loop them unlike a .ogg
+        return [f for f in listdir('Music/') if f.endswith('.mp3') or f.endswith('.ogg')]
+
+    def getMusic(self):
+        # returns the list of music in the /Music/ directory
+        return self.music
 
     def isfloat(self, value):
         #checks if a value is a float
@@ -499,8 +589,9 @@ Please DO NOT REPLY to this email. The sender is: {0}
         #display info about the program
         messagebox.showinfo("About Genesis™ BM", """Genesis™ Business Management
         Version: {}
-        © Adrian Soosaipillai 2020
-        """.format(version))
+        Website: {}
+        © Vortex Enterprise International™
+        """.format(version, website))
 
     def lineno(self):
         # Returns current line number in program
@@ -510,7 +601,7 @@ Please DO NOT REPLY to this email. The sender is: {0}
         #add text and the line number (if passed) to the debug log
         self.debug_event = [dt.datetime.now(), line, event]
         self.debug_string = "{0}:   {1}  --  Line: {2}".format(dt.datetime.now(), event, line)
-        print(self.debug_string)
+        self.frames['Log'].insert_item(self.debug_string)
 
 class Load(tk.Frame):
     def __init__(self, parent, controller, _bg):
@@ -520,30 +611,66 @@ class Load(tk.Frame):
         self._top = parent
         self._controller = controller
         self.fonts = controller.getAppearance('font')
+        self._skip = False
 
         # creating all the label widgets for the booting up page
         self._title = tk.Label(self, text="Genesis BM", fg="black", font=self.fonts[0], bg=_bg)
 
         self._details = tk.Label(self,
-                                 text="Business Management Solution\n\nDeveloped for: Young Enterprise\n Created by: "
-                                    "Adrian",font=self.fonts[1], bg=_bg)
+                               text="Genesis BM\n Developed by Vortex\n Version: {0}\n UI: Pro\n Built for "
+                                    "Windows 10\n "
+                                    "©Vortex".format(version),font=self.fonts[1], bg=_bg)
 
         #adding the logo image
-        self.IMG = tk.PhotoImage(file='Images/young enterprise 2.gif')
+        self.IMG = tk.PhotoImage(file='Images/horus.gif')
         self._Logo = tk.Label(self, image=self.IMG, bg=_bg)
         self._Logo.image = self.IMG
-        #creating the button widgets for the booting up page. These widgets navigate to a registration page for a new
-        # user or a log in page for an existing user
         self._login = tk.Button(self, bg=_bg, text="Login to your company", command=lambda: self._controller.changePage(
             "Login","Login"),fg='black', font=self.fonts[1])
 
         self._new = tk.Button(self, text="Register a new company", command=lambda: self._controller.changePage(
             "Create","Create New Company"), bg='white', fg='black', font=self.fonts[1])
+        #giving focus to the frame to react to key presses
+        self.focus_set()
+        #calls skip method if spacebar pressed
+        self.bind("<space>", lambda e:self.skip())
+        #calls selectSound method if the button is pressed down on either button
+        #I did a separate .bind rather than combining the functions into the function called by the command parameter
+        #  of the buttons since "<Button-1>" is triggered when the left mouse key is pushed down, but the command is
+        # only triggered after the button is released and by then the select sound will be too late
+        self._login.bind("<Button-1>", lambda e: self.selectSound())
+        self._new.bind("<Button-1>", lambda e: self.selectSound())
 
-        #placing all widgets onto the frame
+    def selectSound(self):
+        #plays a select sound
+        self._controller.playMusic('Music/System/select.ogg', fadeout=False)
+
+    def proceed(self, frame, title):
+        #changes the music and moves to the specified frame
+        self._controller.pause(self, 0.5)
+        self.music = self._controller.getMusic()
+        self._controller.playMusic('Music/' + self.music[0], fadeout=False)
+        self._controller.changePage(frame, title)
+
+    def skip(self):
+        #sets variable skip to true to bypass the pauses in the entrance method
+        self._skip = True
+
+    def entrance(self):
+        #the grand entrance with timed music where the widgets are placed at specific time intervals
+        self._controller.pause(self, 0.78, skip=self._skip)
         self._title.place(relx=0.5, rely=0.1, anchor='center')
+        if not self._skip:
+            for x in range(3):
+                self._controller.pause(self, 0.1, skip=self._skip)
+                self._title.place_forget()
+                self._controller.pause(self, 0.1, skip=self._skip)
+                self._title.place(relx=0.5, rely=0.1, anchor='center')
+        self._controller.pause(self, 1.02, skip=self._skip)
         self._details.place(relx=0.5, rely=0.25, anchor='center')
+        self._controller.pause(self, 1, skip=self._skip)
         self._Logo.place(relx=0.5, rely=0.55, anchor='center')
+        self._controller.pause(self, 2, skip=self._skip)
         self._login.place(relx=0.3, rely=0.75, anchor='center', height=50)
         self._new.place(relx=0.7, rely=0.75, anchor='center', height=50)
 
@@ -560,7 +687,8 @@ class Login(tk.Frame):
         self.ini_db = self._controller.getInitDB()
         self._bg = _bg
 
-        # variables to stored the username and password entries
+        self.music = self._controller.getMusic()
+
         self.Username = tk.StringVar()
         self.Password = tk.StringVar()
         #counter to stop brute force
@@ -600,9 +728,52 @@ class Login(tk.Frame):
                                       activebackground=_bg, highlightthickness=0, bd=0)
         self._createUserB.place(relx=0.27, rely=0.5, relheight=0.05, relwidth=0.1)
 
-        self._forgotB = tk.Button(self, text="Forgotten Password", bg=_bg, command=self.forgotten_password,
-                                  font=self.fonts[2], activebackground=_bg, highlightthickness=0, bd=0)
-        self._forgotB.place(relx=0.52, rely=0.5, relheight=0.05, relwidth=0.15)
+        self._contactB = tk.Button(self, text="Contact Support", bg=_bg,
+                                   command=lambda: controller.setRedirect('Login', 'Login', 'ContactForm',
+                                                                          'Contact Support'), font=self.fonts[2],
+                                      activebackground=_bg, highlightthickness=0, bd=0)
+        self._contactB.place(relx=0.40, rely=0.5, relheight=0.05, relwidth=0.15)
+
+        self._forgotB = tk.Button(self, text="Forgotten Password", bg=_bg, command=self.forgotten_password,font=self.fonts[2],
+                                      activebackground=_bg, highlightthickness=0, bd=0)
+        self._forgotB.place(relx=0.56, rely=0.5, relheight=0.05, relwidth=0.15)
+
+
+
+        self.seasonImages = {'Ordinary': ['Images/horus.gif', 3], 'Birthday': ['Images/Icons/birthday.gif', 8],
+                             'Christmas': ['Images/Icons/tree.gif', 17],
+                             'Lent': ['Images/Icons/cross.gif', 16], 'Easter': ['Images/Icons/easter.gif', 16],
+                             'Summer': ['Images/Icons/summer.gif', 7]}
+        self.Date = dt.datetime.now()
+        self.Year = int(self.Date.strftime('%Y'))
+        if dt.datetime(self.Year, 2, 1) <= self.Date <= dt.datetime(self.Year, 2, 15):
+            self.img = self.seasonImages['Birthday']
+        elif dt.datetime(self.Year, 2, 16) <= self.Date <= dt.datetime(self.Year, 3, 26):
+            self.img = self.seasonImages['Lent']
+        elif dt.datetime(self.Year, 3, 27) <= self.Date <= dt.datetime(self.Year, 4, 15):
+            self.img = self.seasonImages['Easter']
+        elif dt.datetime(self.Year, 6, 20) <= self.Date <= dt.datetime(self.Year, 9, 20):
+            self.img = self.seasonImages['Summer']
+        elif dt.datetime(self.Year, 12, 1) <= self.Date <= dt.datetime(self.Year, 12, 31) or dt.datetime(self.Year, 1,
+                                                                                                         1) <= self.Date <= dt.datetime(
+                self.Year, 1, 6):
+            self.img = self.seasonImages['Christmas']
+        else:
+            self.img = self.seasonImages['Ordinary']
+
+        self.secret_counter = 0
+
+        self.IMG = tk.PhotoImage(file=self.img[0])
+        self.IMG = self.IMG.subsample(self.img[1])
+        self.__secure_Button = tk.Button(self, image=self.IMG, bg=_bg, command=self.unlock_secret, relief='flat')
+        self.__secure_Button.place(relx=0.9, rely=0.9, relwidth=0.1, relheight=0.1)
+        self.__secure_Button.image = self.IMG
+
+        self.IMG2 = tk.PhotoImage(file='Images/Icons/1up.gif')
+        self._showSec = tk.Button(self, image=self.IMG2, bg=self._bg, bd=0,highlightthickness=0,
+                               activebackground=self._bg, command=self.unlock_secret)
+        self._showSec.image = self.IMG2
+        #self._showSec.place(relx=0.03, rely=0.85, relwidth=0.1, relheight=0.1)
 
     def forgotten_password(self):
         # frame to reset password - it is called when the forgotten password button is pressed to create the frame
@@ -699,7 +870,7 @@ However, you will have to log in with this password next time regardless and cha
                 self._controller.email_compiler(["Vortex Enterprise International", self._email.get(),
                                                 "Genesis BM Password Reset",
                                                 self._reset_email_body])
-                # confirmation of email success
+                # self, From, To, Subject, Body
                 tk.messagebox.showinfo("Success",
                                        "The password has been reset successfully. Please check your email for the "
                                        "new password to login.")
@@ -804,6 +975,26 @@ However, you will have to log in with this password next time regardless and cha
         else:
             self._passwordE.config(show="")
 
+    def unlock_secret(self):
+        # This is to launch an Easter Egg page
+        # self.__donate.place(relx=0.03, rely=0.85, relheight=0.1, relwidth=0.7)
+        self.secret_counter += 1
+        if self.secret_counter % 10 == 0:
+            self._secretPos = 0.84
+            for x in range(64):
+                self._secretPos += 0.0025
+                self._showSec.place(relx=0.03, rely=self._secretPos, relwidth=0.16, relheight=0.16)
+                self._controller.pause(self, 0.02)
+            self._showSec.place_forget()
+            self._controller.playMusic('Music/' + self.music[0])
+        elif self.secret_counter % 5 == 0:
+            self._secretPos = 1
+            self._controller.playMusic('Music/System/1up.ogg')
+            for x in range(64):
+                self._secretPos -= 0.0025
+                self._showSec.place(relx=0.03, rely=self._secretPos, relwidth=0.16, relheight=0.16)
+                self._controller.pause(self, 0.02)
+
     def check_login(self):
         #function logs in the user after they enter the username and password inputs
 
@@ -885,8 +1076,8 @@ However, you will have to log in with this password next time regardless and cha
                 self.personalLogin = list(self.personalLogin)
                 self.personalID = list(self.personalID)
                 self.company = self._controller.set_company_metadata(self.company_[0])
-
-                #output successful login
+                self._controller.log_event(self.personalID, self._controller.lineno())
+                self._controller.log_event(self.id_headers, self._controller.lineno())
                 tk.messagebox.showinfo("Success", "You have successfully logged in.")
                 self.attempts = 0
                 #call the load company function of the Main class to load all the company's data for the user to access
@@ -2272,8 +2463,7 @@ class HomePage(tk.Frame):
         self._bg = _bg
         self.db = self._controller.getDBdetails()
 
-        #creates the image in the centre of the page which also doubles as a refresh button
-        self.IMG1 = tk.PhotoImage(file='Images/young enterprise 2.gif')
+        self.IMG1 = tk.PhotoImage(file='Images/horus.gif')
         self.IMG1.zoom(3, 3)
         self._Logo = tk.Button(self, image=self.IMG1, bg=_bg, command=self.updateWidgets, relief='flat', bd=0)
         self._Logo.image = self.IMG1
@@ -2487,8 +2677,7 @@ class EmployeePage(tk.Frame):
         #binding that calls the openSideBar function when the mouse hovers over the button
         self._sideButton.bind("<Enter>", lambda e:self.openSideBar())
 
-        #creates the YE logo on the page
-        self.IMG = tk.PhotoImage(file='Images/young enterprise 2.gif')
+        self.IMG = tk.PhotoImage(file='Images/horus.gif')
         self.IMG = self.IMG.subsample(2)
         self._Logo = tk.Label(self, image=self.IMG, bg=_bg)
         self._Logo.image = self.IMG
@@ -2539,6 +2728,7 @@ class EmployeePage(tk.Frame):
     def mini_staff_view(self):
         #function displays the staff's details in a window pop-up
         selectionID = self.staffTree.item(self.staffTree.selection(), 'values')[0]
+        self._controller.log_event(selectionID, self._controller.lineno())
         self._mini_staff_ls = []
         self._top.clipboard_clear()
         for a, b in zip(self._staffHeadersList, self._staffData[int(selectionID)]):
@@ -2589,8 +2779,8 @@ class EmployeePage(tk.Frame):
         finally:
             self.conn.close()
 
-        #instantiates the CreateEmployee class and adds to the redirect stack, telling the program to call back() on
-        # return
+        self._controller.log_event(self.selectionDetails, self._controller.lineno())
+
         self._controller.addFrame([[CreateEmployee, '#ffffff']])[0].fillValues(self.selectionDetails)
         self._controller.setRedirect("EmployeePage", self.company['Company_Name']+": Employees", "CreateEmployee",
                                      "Edit current user", self.back)
@@ -2808,7 +2998,7 @@ class NotificationPage(tk.Frame):
         #frame that occupies the empty space until a notification is clicked and specific details are displayed
         self.fillerFrame = tk.Frame(self, bg=_bg)
         self.fillerFrame.place(relx=0.42, rely=0.1, relheight=0.83, relwidth=0.55)
-        self.IMG1 = tk.PhotoImage(file='Images/young enterprise 2.gif')
+        self.IMG1 = tk.PhotoImage(file='Images/horus.gif')
         self._Logo2 = tk.Label(self.fillerFrame, image=self.IMG1, bg=_bg)
         self._Logo2.image = self.IMG1
         self._Logo2.place(relx=0.2, rely=0.3, relheight=0.4, relwidth=0.6)
@@ -3249,7 +3439,7 @@ It has a {5} urgency.
             2], command=self.updateItems)
         self._refreshB.place(relx=0.4, rely=0.4, relheight=0.05, relwidth=0.2)
 
-        self.IMG = tk.PhotoImage(file='Images/young enterprise 2.gif')
+        self.IMG = tk.PhotoImage(file='Images/horus.gif')
         self._Logo1 = tk.Label(self._sbCanvas, image=self.IMG, bg=self._sbBG)
         self._Logo1.image = self.IMG
         self._Logo1.place(relx=0.1, rely=0.7, relheight=0.2, relwidth=0.8)
@@ -4023,6 +4213,13 @@ Number of Activities:
             for y in x:
                 self.Nodes2[y] = x
 
+        #outputting all the network dictionaries - these are like the vectors that can be used to construct the
+        # entire network
+        self._controller.log_event(self.precedence, self._controller.lineno())
+        self._controller.log_event(self.Nodes, self._controller.lineno())
+        self._controller.log_event(self.proceed, self._controller.lineno())
+        self._controller.log_event(self.Nodes2, self._controller.lineno())
+
         self.network = {}
         self.absNetwork = {}
         self.criticalPath = []
@@ -4041,6 +4238,8 @@ Number of Activities:
         self.early(['0'], start=True)
         self.used = {}
         self.late(['-1'], start=self.network[",".join(self.proceed['-1'])][0])
+        self._controller.log_event(self.network, self._controller.lineno())
+        self._controller.log_event(self.criticalPath, self._controller.lineno())
         self.used = {}
         self.absolute = self.startTimes()
         if self.absolute == 1:
@@ -5537,6 +5736,7 @@ class TransactionsPage(tk.Frame):
             selectionHeaders = self._transHeadersList
             title = 'Transaction ID: '+self.selectionID
 
+        self._controller.log_event(selectionData, self._controller.lineno())
         details = []
         self._top.clipboard_clear()
         #copy the unique ID of the particular transaction to the systems clipboard
@@ -5943,8 +6143,7 @@ class BuyInventoryPage(tk.Frame):
         self._itemTitle = tk.Label(self, text="Item Details", bg=_bg, font=self.fonts[1])
         self._itemTitle.place(relx=0.75, rely=0.1, relheight=0.05, relwidth=0.15)
 
-        #displays YE logo image
-        self.IMG = tk.PhotoImage(file='Images/young enterprise 2.gif')
+        self.IMG = tk.PhotoImage(file='Images/horus.gif')
         self._Logo = tk.Label(self, image=self.IMG, bg=_bg)
         self._Logo.image = self.IMG
         self._Logo.place(relx=0.75, rely=0.15, relheight=0.2, relwidth=0.2)
@@ -6809,6 +7008,7 @@ class BuyInventoryPage(tk.Frame):
             return
 
         self._selectedItem = self.resultTree.item(self.resultTree.selection(), 'values')
+        self._controller.log_event(self._selectedItem, self._controller.lineno())
         webb.open(self._itemURLS[self._selectedItem[-1]])
 
     def saveItemData(self):
@@ -7474,8 +7674,7 @@ class RefundsPage(tk.Frame):
         if self.user['Access_Level'] > 3:
             self._downloadB.config(state='disabled')
 
-        #displays YE logo
-        self.IMG = tk.PhotoImage(file='Images/young enterprise 2.gif')
+        self.IMG = tk.PhotoImage(file='Images/horus.gif')
         self.IMG = self.IMG.subsample(2)
         self._Logo = tk.Label(self, image=self.IMG, bg=_bg)
         self._Logo.image = self.IMG
@@ -7633,6 +7832,7 @@ class RefundsPage(tk.Frame):
             return
         self.selectionID = self.salesTree.item(self.salesTree.selection(), 'values')[0]
         selection = self._salesData[self.selectionID]
+        self._controller.log_event(selection, self._controller.lineno())
         details = []
         self._top.clipboard_clear()
         #copies the sale ID to the system
@@ -8036,6 +8236,158 @@ class InventoryPage(tk.Frame):
             self._chartCanvas.get_tk_widget().destroy()
         self.ChartFrame.destroy()
 
+class ContactForm(tk.Frame):
+    def __init__(self, parent, controller, _bg):
+        super().__init__(parent, bg=_bg)
+        self.place(x=0, y=0, relheight=1, relwidth=1)
+        self._top = parent
+        self._controller = controller
+        self.fonts = controller.getAppearance('font')
+
+        self.subjectaddr = tk.StringVar()
+        self.subjectaddr.set("Enter your email address")
+
+
+        # self.body = StringVar()
+        self.name = tk.StringVar()
+        self.username = tk.StringVar()
+
+        self._title = tk.Label(self, text="Contact your system administration", bg=_bg, font=self.fonts[0])
+        self._title.place(relx=0.2, rely=0.05, relheight=0.05, relwidth=0.6)
+        self._strap = tk.Label(self,
+                                text="If you have any problems with your system, please use this form to contact your system administrator",
+                                bg=_bg)
+        self._strap.place(relx=0, rely=0.1, relheight=0.05, relwidth=0.95)
+
+        self._fromL = tk.Label(self, text="From", bg=_bg, font=self.fonts[4])
+        self._fromL.place(relx=0.23, rely=0.2, relheight=0.05, relwidth=0.12, anchor='nw')
+        self._fromE = tk.Entry(self, textvariable=self.subjectaddr, font=self.fonts[2])
+        self._fromE.place(relx=0.37, rely=0.2, relheight=0.05, relwidth=0.33)
+        self._fromE.bind("<Button-1>", lambda e: self.subjectaddr.set(""))
+
+        self._subjectlist = ('Unable to Login',
+                             'Server disconnected',
+                             'I don\'t know how to do something',
+                             'I wish to request a feature',
+                             'Give Feedback')
+        self._subjectline = tk.StringVar()
+        self._subjectL = tk.Label(self, text="Subject", bg=_bg, font=self.fonts[4])
+        self._subjectL.place(relx=0.23, rely=0.3, relheight=0.05, relwidth=0.12, anchor='nw')
+        self._subjectE = ttk.Combobox(self, textvariable=self._subjectline, values=self._subjectlist,
+                                      font=self.fonts[2])
+        self._subjectE.place(relx=0.37, rely=0.3, relheight=0.05, relwidth=0.33)
+
+        self._bodyL = tk.Label(self, text="Email message: ", bg=_bg, font=self.fonts[4])
+        self._bodyL.place(relx=0.21, rely=0.4, relheight=0.05, relwidth=0.14, anchor='nw')
+        self._bodyT = tk.scrolledtext.ScrolledText(self, wrap='word', bg=_bg, font=self.fonts[2])
+        self._bodyT.place(relx=0.37, rely=0.4, relheight=0.2, relwidth=0.35)
+
+        self._nameL = tk.Label(self, text="Your Name: ", bg=_bg, font=self.fonts[4])
+        self._nameL.place(relx=0.23, rely=0.65, relheight=0.05, relwidth=0.12, anchor='nw')
+        self._nameE = tk.Entry(self, textvariable=self.name, font=self.fonts[2])
+        self._nameE.place(relx=0.37, rely=0.65, relheight=0.05, relwidth=0.33)
+
+        self._usernameL = tk.Label(self, text="Username \n(if available): ", bg=_bg, font=self.fonts[4])
+        self._usernameL.place(relx=0.23, rely=0.74, relheight=0.07, relwidth=0.12, anchor='nw')
+        self._usernameE = tk.Entry(self, textvariable=self.username, font=self.fonts[2])
+        self._usernameE.place(relx=0.37, rely=0.75, relheight=0.05, relwidth=0.33)
+
+        self._submit = tk.Button(self, text="Submit message", bg=_bg, command=self.send_mail, font=self.fonts[2])
+        self._submit.place(relx=0.52, rely=0.85, relheight=0.05, relwidth=0.15)
+
+        self._back = tk.Button(self, text="Go back", bg=_bg,
+                               command=self.go_back, font=self.fonts[2])
+        self._back.place(relx=0.38, rely=0.85, relheight=0.05, relwidth=0.1)
+
+    def go_back(self):
+        self.redirection = self._controller.getRedirect()
+        self._controller.changePage(self.redirection[0], self.redirection[1])
+
+    def send_mail(self):
+        if '@' not in list(
+                self.subjectaddr.get()) or self._subjectline.get() == '' or self._bodyT.get("1.0", tk.END) == '' or \
+                self.name.get() == '':
+            tk.messagebox.showerror("Invalid Input", "The message was not sent. Ensure the address, subject, "
+                                                     "message and name are all filled in and valid. ")
+            return
+
+        self.mail_details = self._controller.parse_file('config.ini', 'company')
+        self.toaddr_ = self.mail_details['main_email']
+
+        self.body = """
+From: {0} 
+    (username={1})
+            
+{2}
+        
+Regards,
+{3}
+        """.format(self.subjectaddr.get(), self.username.get(), self._bodyT.get("1.0", tk.END), self.name.get())
+
+        self.carbon_body = """
+-----------------------------------------------------------------------
+Copy of message to Vortex support centre through Genesis™ BM:
+
+{0}
+
+-----------------------------------------------------------------------
+        """.format(self.body)
+
+        self._controller.email_compiler([self.subjectaddr.get(), self.toaddr_, self._subjectline.get(), self.body],
+                                        [self.subjectaddr.get(), self.subjectaddr.get(),
+                                        "Copy of email to Vortex Support: {0}".format(self._subjectline.get()),
+                                        self.carbon_body])
+        tk.messagebox.showinfo("Success", "The message was sent.")
+
+class Log(tk.Frame):
+    def __init__(self, parent, Main):
+        super().__init__(parent, bg='black')
+        self.pack(fill='both', expand=1)
+        self._top = parent
+        self._controller = Main
+
+        self.__title = tk.Label(self, text="Debug Log", font="Helvitica 15 bold underline", bg='black', fg='white')
+        self.__title.pack()
+        self._save_as = tk.Button(self, text="Save as...", command=self.save_file, fg='white', bg='black')
+        self._save_as.pack()
+
+        self.xscrollbar = tk.Scrollbar(self, orient="horizontal", bg='white', troughcolor='black', relief='ridge', bd=0)
+        self.yscrollbar = tk.Scrollbar(self, orient="vertical", bg='white', troughcolor='black', relief='ridge', bd=0)
+        self._log = tk.Listbox(self, bg='black', fg='white', font="Helvitica 10", activestyle='none',
+                               relief='flat', bd=0, xscrollcommand=self.xscrollbar.set,
+                               yscrollcommand=self.yscrollbar.set)
+        self.xscrollbar.config(command=self._log.xview)
+
+        self.yscrollbar.config(command=self._log.yview)
+        self.xscrollbar.pack(fill='x')
+        self.yscrollbar.pack(side='right', fill='y')
+        self._log.pack(side='left', fill='both', expand=1)
+
+    def insert_item(self, event):
+        self._log.insert(tk.END, event)
+
+    def save_file(self):
+        self.file = filedialog.asksaveasfile(mode='w', initialdir='Log/', defaultextension=".txt")
+        print(self.file)
+        if self.file:
+            self.text = self._log.get(0, tk.END)
+            self.file.write("\n".join(list(self.text)))
+            self.file.close()
+
+    def open_file(self):
+        self.file_name = filedialog.askopenfile(initialdir='Log/', defaultextension=".txt", filetypes=[("All Files",
+                                                                                                        "*.*"),
+                                                                                                       (
+                                                                                                       "Text Documents",
+                                                                                                       "*.txt")])
+        if self.file_name:
+            self._log.delete(0, 'end')
+            for _line in self.file_name.readlines():
+                self._log.insert('end', _line)
+
+    def clear_log(self):
+        self._log.delete(0, 'end')
+
 if __name__ == "__main__":
     #imports some of the main functions
     import datetime as dt
@@ -8050,14 +8402,19 @@ if __name__ == "__main__":
     from email.mime.multipart import MIMEMultipart
     from email.mime.text import MIMEText
     from random import choice
+    from time import sleep
 
     from ebaysdk.finding import Connection as eBayConn
     import paypalrestsdk as paypal
+    from PIL import Image, ImageTk
     from bs4 import BeautifulSoup
     from mysql.connector import MySQLConnection, Error
+    from pygame import mixer
 
     #creates the root tkinter window and raises it to the top
     root = tk.Tk()
+    log = tk.Toplevel()
+    log.withdraw()
     root.lift()
 
     #imports rest of modules
@@ -8073,6 +8430,5 @@ if __name__ == "__main__":
     from plotly.offline import plot
     from plotly.figure_factory import create_gantt
 
-    #instantiates the program
-    app = Main(root)
+    app = Main(root, log)
     root.mainloop()
